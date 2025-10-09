@@ -13,6 +13,8 @@ const transporter = nodemailer.createTransport({
   auth: { user: process.env.MAIL_USER, pass: process.env.MAIL_APP_PASS },
 });
 
+console.log("testing deploy");
+
 app.post("/api/contact", async (req, res) => {
   const { name, email, message, phone } = req.body || {};
   try {
