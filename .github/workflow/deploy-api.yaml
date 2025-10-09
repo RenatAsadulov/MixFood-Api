@@ -1,0 +1,61 @@
+name: Deploy API
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-api
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          cat > ~/.ssh/id_ed25519 << 'KEY'${{ secrets.SSH_PRIVATE_KEY }} KEY
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Rsync sources to server
+        run: |
+          rsync -az --delete \
+            --exclude ".git" \
+            --exclude "node_modules" \
+            -e "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes" \
+            ./ root@${{ secrets.VPS_HOST }}:/var/www/mixfood/api_new/
+
+      - name: Install deps & atomic swap & pm2 reload
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes root@${{ secrets.VPS_HOST }} << 'EOF'
+            set -euo pipefail
+            cd /var/www/mixfood/api_new
+            npm ci --omit=dev
+
+            # гарантируем наличие .env
+            if [ ! -f /var/www/mixfood/api/.env ] && [ -f /var/www/mixfood/api_new/.env ]; then
+              mv /var/www/mixfood/api_new/.env /var/www/mixfood/api/.env
+            fi
+
+            # атомарная замена
+            OLD=/var/www/mixfood/api_old
+            CUR=/var/www/mixfood/api
+            rm -rf "$OLD"
+            if [ -d "$CUR" ]; then mv "$CUR" "$OLD"; fi
+            mv /var/www/mixfood/api_new "$CUR"
+
+            cd "$CUR"
+            # запуск/перезапуск PM2
+            if pm2 describe mixfood-api >/dev/null 2>&1; then
+              pm2 reload mixfood-api
+            else
+              pm2 start ecosystem.config.cjs
+            fi
+            pm2 save
+          EOF
