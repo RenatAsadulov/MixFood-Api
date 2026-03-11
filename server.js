@@ -1,10 +1,11 @@
 import express from "express";
 import nodemailer from "nodemailer";
+import cors from "cors";
 import dotenv from "dotenv";
 dotenv.config();
 
 const app = express();
-app.use(express.json());
+app.use(express.json(), cors());
 
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
@@ -42,5 +43,5 @@ app.post("/api/contact", async (req, res) => {
 });
 
 app.listen(process.env.PORT || 3000, () =>
-  console.log("API on http://127.0.0.1:" + (process.env.PORT || 3000))
+  console.log("API on http://127.0.0.1:" + (process.env.PORT || 3000)),
 );
